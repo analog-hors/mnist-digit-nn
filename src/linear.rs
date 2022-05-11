@@ -2,6 +2,8 @@ use std::any::Any;
 
 use serde::{Serialize, Deserialize};
 
+use crate::rand::Rng;
+
 use super::layer::Layer;
 use super::float_vec::FloatVec;
 
@@ -21,21 +23,16 @@ impl Linear {
         self.biases.len()
     }
 
-    pub fn random(state: &mut u128, inputs: usize, outputs: usize) -> Self {
-        let mut rand = || {
-            *state = state.wrapping_mul(0xDA942042E4DD58B5);
-            let next = (*state >> (u128::BITS - u64::BITS)) as u64;
-            next as u32 as f32 / u32::MAX as f32 - 0.5
-        };
+    pub fn random(rng: &mut Rng, inputs: usize, outputs: usize) -> Self {
         let mut weights = (0..outputs).map(|_| FloatVec::all(0.0, inputs)).collect::<Vec<_>>();
         for weights in &mut weights {
             for weight in weights.iter_mut() {
-                *weight = rand();
+                *weight = rng.next() as f32 - 0.5;
             }
         }
         let mut biases = FloatVec::all(0.0, outputs);
         for bias in biases.iter_mut() {
-            *bias = rand();
+            *bias = rng.next() as f32 - 0.5;
         }
         Self {
             inputs,

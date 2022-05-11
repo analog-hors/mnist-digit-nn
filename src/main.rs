@@ -8,38 +8,54 @@ mod sigmoid;
 mod linear;
 mod model;
 mod dataset;
+mod rand;
 
 use float_vec::FloatVec;
 use linear::Linear;
 use sigmoid::Sigmoid;
 use model::Model;
+use rand::Rng;
+use dataset::MnistDataset;
 
 struct Checkpoint {
     model: Model,
     epoch: u32
 }
 
-impl Checkpoint {
-    fn train_loop(&mut self) {
-        let train_set = dataset::load_mnist("train-images-idx3-ubyte", "train-labels-idx1-ubyte");
-        let test_set = dataset::load_mnist("t10k-images-idx3-ubyte", "t10k-labels-idx1-ubyte");
+const BATCH_SIZE: usize = 64;
+const LEARNING_RATE: f32 = 0.1;
 
+impl Checkpoint {
+    fn train_loop(&mut self, dataset: &MnistDataset) {
+        let mut rng = Rng::default();
         loop {
-            for batch in train_set.chunks(32) {
-                self.model.train_step(batch, 1.0);
+            for _ in 0..dataset.train_set_len() / BATCH_SIZE {
+                let batch = dataset.sample_batch(&mut rng, BATCH_SIZE);
+                self.model.train_step(&batch, LEARNING_RATE);
             }
 
             let mut loss = 0.0;
-            for (input, target) in &test_set {
-                let pred = self.model.forward(input);
-                loss += (pred - target).iter().map(|n| n * n).sum::<f32>();
+            let mut correct_predictions = 0;
+            for (input, digit) in dataset.test_set() {
+                let target_vec = dataset.digit_to_label(digit);
+                let pred_vec = self.model.forward(input);
+                let (pred, _) = pred_vec.iter()
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                    .unwrap();
+                if pred == digit {
+                    correct_predictions += 1;
+                }
+                loss += (pred_vec - target_vec).iter().map(|n| n * n).sum::<f32>();
             }
-            loss /= test_set.len() as f32;
+            let test_set_len = dataset.test_set_len();
+            loss /= test_set_len as f32;
+            let accuracy = correct_predictions as f32 / test_set_len as f32;
 
             self.epoch += 1;
             self.save();
 
-            println!("[Epoch {}] Loss: {}", self.epoch, loss);
+            println!("[Epoch {}] Loss: {} ({:.1}% accuracy)", self.epoch, loss, accuracy * 100.0);
         }
     }
 
@@ -84,12 +100,12 @@ macro_rules! model {
 }
 
 fn main() {
-    let mut state = 0xB57D6A35CFD25BDBD774231501440A94;
+    let mut rng = Rng::default();
     let mut checkpoint = Checkpoint {
         model: model! {
-            Linear::random(&mut state, 28 * 28, 128),
+            Linear::random(&mut rng, 28 * 28, 256),
             Sigmoid,
-            Linear::random(&mut state, 128, 10),
+            Linear::random(&mut rng, 256, 10),
             Sigmoid
         },
         epoch: 0
@@ -103,7 +119,11 @@ fn main() {
                 checkpoint.load(&path);
                 println!("Loaded checkpoint \"{}\".", path);
             }
-            checkpoint.train_loop();
+            let dataset = MnistDataset::load(
+                "train-images-idx3-ubyte", "train-labels-idx1-ubyte",
+                "t10k-images-idx3-ubyte", "t10k-labels-idx1-ubyte"
+            );
+            checkpoint.train_loop(&dataset);
         },
         "infer" => {
             checkpoint.load(&args.next().expect("Expected path to checkpoint."));

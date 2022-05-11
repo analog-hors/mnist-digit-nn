@@ -14,7 +14,7 @@ impl Model {
         self.layers.iter().fold(input.clone(), |i, l| l.forward(&i))
     }
 
-    pub fn train_step(&mut self, batch: &[(FloatVec, FloatVec)], lr: f32) {
+    pub fn train_step(&mut self, batch: &[(&FloatVec, &FloatVec)], lr: f32) {
         let raw_gradients = batch.par_iter()
             .map(|(input, target)| {
                 let mut gradients = Vec::with_capacity(self.layers.len());
